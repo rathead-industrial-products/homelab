@@ -2,76 +2,86 @@
 #!/usr/bin/python3
 #
 # Mindmentum CGI script
-# Services report their status to this script
-# Responds with a dashboard showing host/service status
+# Services report their status to this script using a json message
+# With no input message, the script responds with a dashboard showing host/service status
 #
 # Called by a URL access of the form http://mindmentum.com/cgi-bin/homelab_status.py
+#
+# Status is maintained in the homelab_status.json 
 #
 #############
 #
 # POST URL
 #
-# Logs status of home automation devices at hidden valley.
+# Logs status of homelab services.
 #
 # JSON message format:
-# {  'host' : 'host_name',              // i.e. 'host' = 'magicmirror', 'fencepost-back-1', ..
-#   <other JSON data>
+# { 'site' " 'home' | 'office',
+#   'host' : 'host_name',               // i.e. 'host' = 'server', 'nas, 'magicmirror', 'flowmeter', ..
+#   'process: '<cron job name>',
+#   'subprocess' : '<subprocess name>',
+#   'interval' : '5'                    // reporting interval in minutes
 # }
 #
 # JSON log file format
-# {
-#       'ip': {
-#               'addr': '0.0.0.0',
-#               'last_update': '2010-12-12 11:42'
+# { 'site': {
+#       'home': {
+#           'server': {
+#               'cronjob-1': {
+#                   'interval' : 5,
+#                   'last_update': '2022-10-26 11:00',
+#                   'ip': '47.33.18.178'
+#               },
+#               'cronjob-2': {
+#                   'interval' : 5,
+#                   'last_update': '2022-10-26 11:01',
+#                   'ip': '47.33.18.178'
+#               }
+#           },
+#           'pfsense': {
+#               'interval' : 5,
+#               'last_update': '2022-10-26 11:00',
+#               'ip': '47.33.18.178'
+#           }
 #       },
-#       'hosts': [
-#       {
-#               'hostname': 'magicmirror',
-#               'last_update': '2010-12-12 11:41',
-#                <other JSON data from latest message, if any>
-#       },
-#       {
-#               'hostname': 'fencepost-back-1',
-#               'last_update': '2010-12-12 11:42'
-#                <other JSON data from latest message, if any>
-#       }]
+#       'office': {
+#       }
 # }
-#
-#
+#   
 #
 
 import cgi, os, datetime, sys, json
 
-HA_STATUS_LOGFILE = "/big/dom/xmindmentum/hidden_valley/ha_status.json"
+HOMELAB_STATUS_LOGFILE = "/big/dom/xmindmentum/homelab/homelab_status.json"
+UPDATE_STATUS = False   # flags
+REPORT_STATUS = False
 
 timezone_adj  = datetime.timedelta(hours=-3)    # server is on Eastern time
 now = datetime.datetime.today() + timezone_adj
 timestamp = now.strftime("%Y-%m-%d %H:%M")
 
-# get hidden valley ip address
+# get sender's ip address
 ip = os.environ['REMOTE_ADDR']
 
 # JSON data from POST
 data = json.load(sys.stdin)
-host = None
-if data and 'host' in data:
-        host = data['host']
+if data:
+    UPDATE_STATUS = True
+else:
+    REPORT_STATUS = True
 
 # in case of problems, reply to sendor with some info
 print("Content-Type: text/html\n")
 print (data)
 
-if host:
-    try:
-        f = open(HA_STATUS_LOGFILE, 'r')
-    except:
-        # file doesn't exist to read json data, create dict
-        updates = {}
-        updates['ip'] = { 'addr': '0.0.0.0', 'last_update': 'Never' }
-        updates['hosts'] = []
-    else:
-        updates = json.load(f)
-        f.close()
+# dump status file into dict for updating, create an empty dict if file doesn't exist
+try:
+    f = open(HOMELAB_STATUS_LOGFILE, 'r')
+except:
+    updates = {}        # file doesn't exist, create empty dict
+else:
+    updates = json.load(f)
+    f.close()
 
     #
     # update dict
