@@ -53,6 +53,16 @@
 import cgi, os, datetime, sys, json
 
 HOMELAB_STATUS_LOGFILE = "/big/dom/xmindmentum/homelab/homelab_status.json"
+
+# compare last_update + report interval to current time
+# return True if current time (now) is later than last_update + (2 x report interval)
+def overdue(process, now):
+    last_update = datetime.datetime.strptime(process[last_update], "%Y-%m-%d %H:%M")
+    report_interval = datetime.timedelta(minutes=process[interval])
+    overdue_time = last_update + (2 * report_interval)
+    return (now > overdue_time)
+
+
 UPDATE_STATUS = False   # flags
 REPORT_STATUS = False
 
