@@ -68,12 +68,23 @@ JSON_LOG_FILE_EXAMPLE = \
     ]
 }
 
+HTML_DASHBOARD = '''
+Content-Type: text/html\n
+<!doctype html><title>Hello</title><h2>hello world</h2>
+'''
 
 
 from operator import itemgetter
 import cgi, os, datetime, sys, json
 
 HOMELAB_STATUS_LOGFILE = "/big/dom/xmindmentum/homelab/homelab_status.json"
+
+def pingIP(ip):
+    response = os.system("ping -c 1 " + ip + " > /dev/null 2>&1")
+    if response == 0:
+        print (ip, 'is up!')
+    else:
+        print (ip, 'is down!')
 
 # Return lists of keys of the json dict that span from the root to the leaf
 # The entire leaf node is included at the end of the list
@@ -118,6 +129,17 @@ for service in services:
         service[-1] = True      # service is running
     print (service)
 
+
+# return a static html string indicating if service is running or not
+def html_status_h1(service, running):
+    return ('<h1 "style=color:{running_status}";>{service}</h1>'.format(service=service, running_status="green" if running else "red"))
+
+
+print (HTML_DASHBOARD)
+print (html_status_h1("SERVER", True))
+print (html_status_h1("SERVER", False))
+
+pingIP("8.8.8.8")
 
 '''
 
