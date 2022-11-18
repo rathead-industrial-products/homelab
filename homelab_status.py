@@ -98,28 +98,34 @@ def flatten(json_t):
     return (branches)
 
 
+# compare last_update + report interval to current time
+# return True if current time is later than last_update + (2 x report interval)
+def overdue(service):
+    timezone_adj  = datetime.timedelta(hours=-3)    # server is on Eastern time
+    now = datetime.datetime.today() + timezone_adj
+    last_update = datetime.datetime.strptime(service['last_update'], "%Y-%m-%d %H:%M")
+    report_interval = datetime.timedelta(minutes=service['interval'])
+    overdue_time = last_update + (2 * report_interval)
+    return (now > overdue_time)
+
+
 services = sorted(flatten(JSON_LOG_FILE_EXAMPLE), key=itemgetter(0,1,2))
 for service in services:
+    print (service)
+    if (overdue(service[-1])):
+        service[-1] = False     # service is not running
+    else:
+        service[-1] = True      # service is running
     print (service)
 
 
 '''
 
-# compare last_update + report interval to current time
-# return True if current time (now) is later than last_update + (2 x report interval)
-def overdue(process, now):
-    last_update = datetime.datetime.strptime(process[last_update], "%Y-%m-%d %H:%M")
-    report_interval = datetime.timedelta(minutes=process[interval])
-    overdue_time = last_update + (2 * report_interval)
-    return (now > overdue_time)
 
 
 UPDATE_STATUS = False   # flags
 REPORT_STATUS = False
 
-timezone_adj  = datetime.timedelta(hours=-3)    # server is on Eastern time
-now = datetime.datetime.today() + timezone_adj
-timestamp = now.strftime("%Y-%m-%d %H:%M")
 
 # get sender's ip address
 ip = os.environ['REMOTE_ADDR']
