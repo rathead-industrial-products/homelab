@@ -15,44 +15,95 @@
 #
 # Logs status of homelab services.
 #
-# JSON message format:
+# JSON message reporting format:
 # { 'site' " 'home' | 'office',
 #   'host' : 'host_name',               // i.e. 'host' = 'server', 'nas, 'magicmirror', 'flowmeter', ..
 #   'process: '<cron job name>',
-#   'subprocess' : '<subprocess name>',
 #   'interval' : '5'                    // reporting interval in minutes
+#                                       // last_update and reporting device ip are obtained by the server
 # }
-#
-# JSON log file format
-# { 'site': {
-#       'home': {
-#           'server': {
-#               'cronjob-1': {
-#                   'interval' : 5,
-#                   'last_update': '2022-10-26 11:00',
-#                   'ip': '47.33.18.178'
-#               },
-#               'cronjob-2': {
-#                   'interval' : 5,
-#                   'last_update': '2022-10-26 11:01',
-#                   'ip': '47.33.18.178'
-#               }
-#           },
-#           'pfsense': {
-#               'interval' : 5,
-#               'last_update': '2022-10-26 11:00',
-#               'ip': '47.33.18.178'
-#           }
-#       },
-#       'office': {
-#       }
-# }
-#   
 #
 
+JSON_LOG_FILE_EXAMPLE = \
+{
+    "site": [{
+            "name": "home",
+            "host": [{
+                    "name": "server",
+                    "process": [{
+                            "name": "heartbeat",
+                            "interval" : 5,
+                            "last_update": "2022-10-26 11:00",
+                            "ip": "47.33.18.178"
+                        },
+                        {
+                            "name": "some_service",
+                            "interval" : 1,
+                            "last_update": "2022-10-26 11:01",
+                            "ip": "47.33.18.178"
+                        }
+                    ]
+                },
+                {   "name": "plex",
+                    "process": {
+                        "name": "heartbeat",
+                        "interval" : 5,
+                        "last_update": "2022-10-26 11:00",
+                        "ip": "47.33.18.178"
+                    }
+                }
+            ]
+        },
+        {   "name": "office",
+            "host": {
+                "name": "server",
+                "process": {
+                    "name": "heartbeat",
+                    "interval" : 5,
+                    "last_update": "2022-10-26 11:00",
+                    "ip": "47.33.18.178"
+                }
+            }
+        }
+    ]
+}
+
+
+
+from operator import itemgetter
 import cgi, os, datetime, sys, json
 
 HOMELAB_STATUS_LOGFILE = "/big/dom/xmindmentum/homelab/homelab_status.json"
+
+# Return lists of keys of the json dict that span from the root to the leaf
+# The entire leaf node is included at the end of the list
+# e.g ("home", "server", "heartbeat", <heartbeat dict>)
+def flatten(json_t):
+    def _makeList(value): # if value is not a list, return it as a one-element list, otherwise return value
+        if not isinstance(value, list): return ([value,])
+        else:                           return (value)
+
+    def _isLeaf(dict_t):  # return True if leaf node
+        return ("interval" in dict_t.keys())
+
+    branches = []
+    for site in _makeList(json_t["site"]):
+        for host in _makeList(site["host"]):
+            if _isLeaf(host):
+                branches.append([site["name"], host["name"], host])
+            else:
+                for process in _makeList(host["process"]):
+                   branches.append([site["name"], host["name"], process["name"], process]) 
+
+    return (branches)
+
+
+services = sorted(flatten(JSON_LOG_FILE_EXAMPLE), key=itemgetter(0,1,2))
+for service in services:
+    print (service)
+
+
+'''
 UPDATE_STATUS = False   # flags
 REPORT_STATUS = False
 
@@ -113,3 +164,5 @@ else:
     # rewrite file
     with open(HA_STATUS_LOGFILE, 'w') as f:
         json.dump(updates, f)
+        
+'''
