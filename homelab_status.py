@@ -68,9 +68,16 @@ JSON_LOG_FILE_EXAMPLE = \
     ]
 }
 
-HTML_DASHBOARD = '''
-Content-Type: text/html\n
-<!doctype html><title>Hello</title><h2>hello world</h2>
+HTML_DASHBOARD_HEADER = '''
+<!DOCTYPE html>
+<html>
+<title>Dashboard</title>
+<body>
+'''
+
+HTML_DASHBOARD_FOOTER = '''
+</body>
+</html>
 '''
 
 
@@ -79,12 +86,25 @@ import cgi, os, datetime, sys, json
 
 HOMELAB_STATUS_LOGFILE = "/big/dom/xmindmentum/homelab/homelab_status.json"
 
+# Return True if ip responds to ping
 def pingIP(ip):
-    response = os.system("ping -c 1 " + ip + " > /dev/null 2>&1")
-    if response == 0:
-        print (ip, 'is up!')
-    else:
-        print (ip, 'is down!')
+    return (not os.system("ping -c 1 -W 1 " + ip + " > /dev/null 2>&1"))
+
+
+# Return the IP address of ("home" | "office")
+def getIP(services, site):
+    ip = "8.8.8.8"
+    for service in services:
+        if service[0] == site and not overdue(service):
+            ip = service[-1]["ip"]
+    return (ip)
+
+def homeIP(services):
+    return (getIP(services, "home"))
+
+def officeIP(services):
+    return (getIP(services, "office"))
+
 
 # Return lists of keys of the json dict that span from the root to the leaf
 # The entire leaf node is included at the end of the list
@@ -111,36 +131,38 @@ def flatten(json_t):
 
 # compare last_update + report interval to current time
 # return True if current time is later than last_update + (2 x report interval)
+# service = e.g. ("home", "server", "heartbeat", <heartbeat dict>)
+# process = <heartbeat dict>
 def overdue(service):
+    process = service[-1]
     timezone_adj  = datetime.timedelta(hours=-3)    # server is on Eastern time
     now = datetime.datetime.today() + timezone_adj
-    last_update = datetime.datetime.strptime(service['last_update'], "%Y-%m-%d %H:%M")
-    report_interval = datetime.timedelta(minutes=service['interval'])
+    last_update = datetime.datetime.strptime(process['last_update'], "%Y-%m-%d %H:%M")
+    report_interval = datetime.timedelta(minutes=process['interval'])
     overdue_time = last_update + (2 * report_interval)
     return (now > overdue_time)
 
 
-services = sorted(flatten(JSON_LOG_FILE_EXAMPLE), key=itemgetter(0,1,2))
-for service in services:
-    print (service)
-    if (overdue(service[-1])):
-        service[-1] = False     # service is not running
-    else:
-        service[-1] = True      # service is running
-    print (service)
-
-
 # return a static html string indicating if service is running or not
-def html_status_h1(service, running):
-    return ('<h1 "style=color:{running_status}";>{service}</h1>'.format(service=service, running_status="green" if running else "red"))
+def html_status_h2(service):
+    service_str = service[0] + ' ' + service[1] + ' ' + service[2]
+    color = "green" if not overdue(service) else "red"
+    return ('<h2 style="color:{}">{}</h2>'.format(color, service_str))
+
+def htmlIpReachable_h2(str, reachable):
+    reach_str = "reachable" if reachable else "unreachable"
+    color = "green" if reachable else "red"
+    return ('<h2 style="color:{}">{} is {}</h2>'.format(color, str, reach_str))
 
 
-print (HTML_DASHBOARD)
-print (html_status_h1("SERVER", True))
-print (html_status_h1("SERVER", False))
+services = sorted(flatten(JSON_LOG_FILE_EXAMPLE), key=itemgetter(0,1,2))
 
-pingIP("8.8.8.8")
-
+print (HTML_DASHBOARD_HEADER)
+print (htmlIpReachable_h2("Home IP is", pingIP(homeIP(services))))
+print (htmlIpReachable_h2("Office IP is", pingIP(homeIP(services))))
+for service in services:
+    print (html_status_h2(service))
+print (HTML_DASHBOARD_FOOTER)
 '''
 
 
