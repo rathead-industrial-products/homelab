@@ -2,12 +2,12 @@
 #!/usr/bin/python3
 #
 # Mindmentum CGI script
-# Services report their status to this script using a json message
-# With no input message, the script responds with a dashboard showing host/service status
+# Remote services report their status to this script using a json message
+# Returns a dashboard showing host/service status, regardless if message was posted or not
 #
 # Called by a URL access of the form http://mindmentum.com/cgi-bin/homelab_status.py
 #
-# Status is maintained in the homelab_status.json 
+# Status is maintained in json format in HOMELAB_STATUS_LOGFILE 
 #
 #############
 #
@@ -24,49 +24,15 @@
 # }
 #
 
+UNIT_TEST = True
+
 JSON_LOG_FILE_EXAMPLE = \
-{
-    "site": [{
-            "name": "home",
-            "host": [{
-                    "name": "server",
-                    "process": [{
-                            "name": "heartbeat",
-                            "interval" : 5,
-                            "last_update": "2022-10-26 11:00",
-                            "ip": "47.33.18.178"
-                        },
-                        {
-                            "name": "some_service",
-                            "interval" : 1,
-                            "last_update": "2022-10-26 11:01",
-                            "ip": "47.33.18.178"
-                        }
-                    ]
-                },
-                {   "name": "plex",
-                    "process": {
-                        "name": "heartbeat",
-                        "interval" : 5,
-                        "last_update": "2022-10-26 11:00",
-                        "ip": "47.33.18.178"
-                    }
-                }
-            ]
-        },
-        {   "name": "office",
-            "host": {
-                "name": "server",
-                "process": {
-                    "name": "heartbeat",
-                    "interval" : 5,
-                    "last_update": "2022-10-26 11:00",
-                    "ip": "47.33.18.178"
-                }
-            }
-        }
-    ]
-}
+[
+    { "site": "home", "host": "server", "process": "heartbeat", "interval": 5, "last_update": "2022-10-26 11:00", "ip": "47.33.18.178" },
+    { "site": "home", "host": "server", "process": "some_service", "interval": 1, "last_update": "2022-10-26 11:01", "ip": "47.33.18.178" },
+    { "site": "home", "host": "plex", "process": "heartbeat", "interval": 5, "last_update": "2022-10-26 11:00", "ip": "47.33.18.178" },
+    { "site": "office", "host": "server", "process": "heartbeat", "interval": 5, "last_update": "2022-10-26 11:00", "ip": "24.182.63.74" }
+]
 
 HTML_DASHBOARD_HEADER = '''
 <!DOCTYPE html>
@@ -80,23 +46,26 @@ HTML_DASHBOARD_FOOTER = '''
 </html>
 '''
 
-
+from collections import namedtuple
 from operator import itemgetter
-import cgi, os, datetime, sys, json
+import cgi, os, datetime, sys, json,  random
 
-HOMELAB_STATUS_LOGFILE = "/big/dom/xmindmentum/homelab/homelab_status.json"
+
+if UNIT_TEST: HOMELAB_STATUS_LOGFILE = "./homelab_status.json"
+else:         HOMELAB_STATUS_LOGFILE = "/big/dom/xmindmentum/homelab/homelab_status.json"
+Service_t = namedtuple("Service", "site, host, process, interval, last_update, ip")
+
 
 # Return True if ip responds to ping
 def pingIP(ip):
     return (not os.system("ping -c 1 -W 1 " + ip + " > /dev/null 2>&1"))
 
-
 # Return the IP address of ("home" | "office")
 def getIP(services, site):
-    ip = "8.8.8.8"
+    ip = "0.0.0.0"
     for service in services:
-        if service[0] == site and not overdue(service):
-            ip = service[-1]["ip"]
+        if service.site == site and not overdue(service):
+            ip = service.ip
     return (ip)
 
 def homeIP(services):
@@ -106,46 +75,37 @@ def officeIP(services):
     return (getIP(services, "office"))
 
 
-# Return lists of keys of the json dict that span from the root to the leaf
-# The entire leaf node is included at the end of the list
-# e.g ("home", "server", "heartbeat", <heartbeat dict>)
-def flatten(json_t):
-    def _makeList(value): # if value is not a list, return it as a one-element list, otherwise return value
-        if not isinstance(value, list): return ([value,])
-        else:                           return (value)
+# Return a named tuple of the reporting service from the json dict entry
+def dict2Tuple(service_d):
+    service_named_tuple = Service_t( service_d["site"], service_d["host"], service_d["process"], service_d["interval"], service_d["last_update"], service_d["ip"] )
+    return (service_named_tuple)
 
-    def _isLeaf(dict_t):  # return True if leaf node
-        return ("interval" in dict_t.keys())
+# Return a sorted list of named tuples generated from the json reporting status file
+def serviceList(json_data):
+    values = []
+    for service_d in json_data:
+        service_list = dict2Tuple(service_d)
+        values.append(service_list)
+    values.sort(key=itemgetter(0,1,2))
+    return (values)
 
-    branches = []
-    for site in _makeList(json_t["site"]):
-        for host in _makeList(site["host"]):
-            if _isLeaf(host):
-                branches.append([site["name"], host["name"], host])
-            else:
-                for process in _makeList(host["process"]):
-                   branches.append([site["name"], host["name"], process["name"], process]) 
-
-    return (branches)
-
+# return current Pacific Time
+def timeNow():
+    timezone_adj  = datetime.timedelta(hours=-3)    # server is on Eastern time
+    now = datetime.datetime.today() + timezone_adj
+    return (now)
 
 # compare last_update + report interval to current time
 # return True if current time is later than last_update + (2 x report interval)
-# service = e.g. ("home", "server", "heartbeat", <heartbeat dict>)
-# process = <heartbeat dict>
 def overdue(service):
-    process = service[-1]
-    timezone_adj  = datetime.timedelta(hours=-3)    # server is on Eastern time
-    now = datetime.datetime.today() + timezone_adj
-    last_update = datetime.datetime.strptime(process['last_update'], "%Y-%m-%d %H:%M")
-    report_interval = datetime.timedelta(minutes=process['interval'])
+    last_update = datetime.datetime.strptime(service.last_update, "%Y-%m-%d %H:%M")
+    report_interval = datetime.timedelta(minutes=service.interval)
     overdue_time = last_update + (2 * report_interval)
-    return (now > overdue_time)
-
+    return (timeNow() > overdue_time)
 
 # return a static html string indicating if service is running or not
 def html_status_h2(service):
-    service_str = service[0] + ' ' + service[1] + ' ' + service[2]
+    service_str = service.site + ' ' + service.host + ' ' + service.process
     color = "green" if not overdue(service) else "red"
     return ('<h2 style="color:{}">{}</h2>'.format(color, service_str))
 
@@ -154,75 +114,69 @@ def htmlIpReachable_h2(str, reachable):
     color = "green" if reachable else "red"
     return ('<h2 style="color:{}">{} is {}</h2>'.format(color, str, reach_str))
 
+# serve up html displaying status
+def serveHTML():
+    print (HTML_DASHBOARD_HEADER)
+    try:
+        f = open(HOMELAB_STATUS_LOGFILE, 'r')
+        services = serviceList(json.load(f))
+        f.close()
+        print (htmlIpReachable_h2("Home IP is", pingIP(homeIP(services))))
+        print (htmlIpReachable_h2("Office IP is", pingIP(officeIP(services))))
+        for service in services:
+            print (html_status_h2(service))
+    except:
+        print ("Unable to find status file")
+    print (HTML_DASHBOARD_FOOTER)
 
-services = sorted(flatten(JSON_LOG_FILE_EXAMPLE), key=itemgetter(0,1,2))
+# dump status file into dict, create an empty dict if file doesn't exist
+# update with report from remote service
+# rewrite file back out
+def updateStatusFile(report):  # report is json message
+    try:
+        f = open(HOMELAB_STATUS_LOGFILE, 'r')
+        status = json.load(f)
+        f.close()
+    except:
+        # file doesn't exist, create empty list
+        status = []    
 
-print (HTML_DASHBOARD_HEADER)
-print (htmlIpReachable_h2("Home IP is", pingIP(homeIP(services))))
-print (htmlIpReachable_h2("Office IP is", pingIP(homeIP(services))))
-for service in services:
-    print (html_status_h2(service))
-print (HTML_DASHBOARD_FOOTER)
-'''
+    f_new_entry = True
+    timestamp   = timeNow().strftime("%Y-%m-%d %H:%M")
+    if UNIT_TEST: sender_ip = report["ip"]
+    else:         sender_ip = os.environ['REMOTE_ADDR']
+    for service_d in status:                # each entry as a dict
+        service_t = dict2Tuple(service_d)   # entry as a named tuple
+        if (report["site"]    != service_t.site) \
+        or (report["host"]    != service_t.host) \
+        or (report["process"] != service_t.process): continue
+        # matched an existing entry, update it
+        f_new_entry = False
+        service_d["interval"]    = report["interval"]
+        service_d["last_update"] = timestamp
+        service_d["ip"]          = sender_ip
+    if f_new_entry:
+        new = { "site":        report["site"],
+                "host":        report["host"],
+                "process":     report["process"],
+                "interval":    report["interval"],
+                "last_update": timestamp,
+                "ip":          sender_ip }
+        status.append(new)
+
+    # rewrite file back
+    with open(HOMELAB_STATUS_LOGFILE, 'w') as f:
+        json.dump(status, f)
+    
 
 
-
-UPDATE_STATUS = False   # flags
-REPORT_STATUS = False
-
-
-# get sender's ip address
-ip = os.environ['REMOTE_ADDR']
-
-# JSON data from POST
-data = json.load(sys.stdin)
+#
+# Main
+#
+if UNIT_TEST: data = JSON_LOG_FILE_EXAMPLE[random.randrange(len(JSON_LOG_FILE_EXAMPLE))] # one entry from example file
+else:         data = json.load(sys.stdin)           # json data from POST if remote service is reporting
 if data:
-    UPDATE_STATUS = True
-else:
-    REPORT_STATUS = True
+    updateStatusFile(data)
+serveHTML()
 
-# in case of problems, reply to sendor with some info
-print("Content-Type: text/html\n")
-print (data)
-
-# dump status file into dict for updating, create an empty dict if file doesn't exist
-try:
-    f = open(HOMELAB_STATUS_LOGFILE, 'r')
-except:
-    updates = {}        # file doesn't exist, create empty dict
-else:
-    updates = json.load(f)
-    f.close()
-
-    #
-    # update dict
-    #
-    # do not update ip address if reporting node is 'fireriser' or 'wiringcloset' (not in the home network)
-    #
-    if ((host != 'fireriser') and (host != 'wiringcloset')):
-        if updates['ip']['addr'] != ip:
-            updates['ip']['addr'] = ip
-        updates['ip']['last_update'] = timestamp     # changed or unchanged ip has been confirmed at this time
-
-    num_hosts = len(updates['hosts'])
-    # replace last update time for host with current time
-    hostfound = False
-    for i in range(num_hosts):
-        if updates['hosts'][i]['hostname'] == host:
-            updates['hosts'][i]['last_update'] = timestamp
-            hostfound = True
-            break            # to save current value of i, used below
-
-    if not hostfound:   # host not in database, add it
-        updates['hosts'].append({ 'hostname': host, 'last_update': timestamp })
-        i = -1
-
-    updates['hosts'][i].update(data)    # i is still in scope from for i in range(num_hosts)
-    del updates['hosts'][i]['host']     # 'host' in json is already saved as 'hostname' in the logfile
-
-
-    # rewrite file
-    with open(HA_STATUS_LOGFILE, 'w') as f:
-        json.dump(updates, f)
-        
-'''
+    
