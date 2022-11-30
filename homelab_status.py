@@ -1,4 +1,3 @@
-#
 #!/usr/bin/env python3
 #
 # Mindmentum CGI script
@@ -34,10 +33,10 @@ JSON_LOG_FILE_EXAMPLE = \
     { "site": "office", "host": "server", "process": "heartbeat", "interval": 5, "last_update": "2022-10-26 11:00", "ip": "24.182.63.74" }
 ]
 
-HTML_DASHBOARD_HEADER = '''
+HTML_DASHBOARD_HEADER = '''\
 Content-Type: text/html
-<!DOCTYPE html>
-<html>
+
+<!doctype html>
 <title>Dashboard</title>
 <body>
 '''
@@ -179,11 +178,14 @@ def updateStatusFile(report):  # report is json message
 
 if UNIT_TEST: data = JSON_LOG_FILE_EXAMPLE[random.randrange(len(JSON_LOG_FILE_EXAMPLE))] # one entry from example file
 else:
-    try: data = json.load(sys.stdin)           # json data from POST if remote service is reporting
-    except: pass
+    try:
+        data = json.load(sys.stdin)           # json data from POST if remote service is reporting
+    except:
+        data = None
 
 if data:
     updateStatusFile(data)
+
 serveHTML()
 
     
