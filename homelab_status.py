@@ -1,5 +1,5 @@
 #
-#!/usr/bin/python3
+#!/usr/bin/env python3
 #
 # Mindmentum CGI script
 # Remote services report their status to this script using a json message
@@ -24,7 +24,7 @@
 # }
 #
 
-UNIT_TEST = True
+UNIT_TEST = False
 
 JSON_LOG_FILE_EXAMPLE = \
 [
@@ -35,6 +35,7 @@ JSON_LOG_FILE_EXAMPLE = \
 ]
 
 HTML_DASHBOARD_HEADER = '''
+Content-Type: text/html
 <!DOCTYPE html>
 <html>
 <title>Dashboard</title>
@@ -57,12 +58,14 @@ Service_t = namedtuple("Service", "site, host, process, interval, last_update, i
 
 
 # Return True if ip responds to ping
+# Return False if no response or if ip == None
 def pingIP(ip):
+    if not ip: return (False)
     return (not os.system("ping -c 1 -W 1 " + ip + " > /dev/null 2>&1"))
 
 # Return the IP address of ("home" | "office")
 def getIP(services, site):
-    ip = "0.0.0.0"
+    ip = None
     for service in services:
         if service.site == site and not overdue(service):
             ip = service.ip
@@ -173,8 +176,12 @@ def updateStatusFile(report):  # report is json message
 #
 # Main
 #
+
 if UNIT_TEST: data = JSON_LOG_FILE_EXAMPLE[random.randrange(len(JSON_LOG_FILE_EXAMPLE))] # one entry from example file
-else:         data = json.load(sys.stdin)           # json data from POST if remote service is reporting
+else:
+    try: data = json.load(sys.stdin)           # json data from POST if remote service is reporting
+    except: pass
+
 if data:
     updateStatusFile(data)
 serveHTML()
