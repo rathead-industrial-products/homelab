@@ -179,7 +179,9 @@ def updateStatusFile(report):  # report is json message
 if UNIT_TEST: data = JSON_LOG_FILE_EXAMPLE[random.randrange(len(JSON_LOG_FILE_EXAMPLE))] # one entry from example file
 else:
     try:
-        data = json.load(sys.stdin)           # json data from POST if remote service is reporting
+        # json data from POST if remote service is reporting
+        # the json dict is contained in a list, e.g [{..data..}]. Do not know why
+        data = json.load(sys.stdin)[0]           
     except:
         data = None
 
