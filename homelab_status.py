@@ -180,8 +180,7 @@ if UNIT_TEST: data = JSON_LOG_FILE_EXAMPLE[random.randrange(len(JSON_LOG_FILE_EX
 else:
     try:
         # json data from POST if remote service is reporting
-        # the json dict is contained in a list, e.g [{..data..}]. Do not know why
-        data = json.load(sys.stdin)[0]           
+        data = json.load(sys.stdin)           
     except:
         data = None
 
