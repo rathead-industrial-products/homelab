@@ -97,6 +97,11 @@ def timeNow():
     now = datetime.datetime.today() + timezone_adj
     return (now)
 
+# return current Pacific Time as a string
+def timestamp():
+    return (timeNow().strftime("%Y-%m-%d %H:%M"))
+
+
 # compare last_update + report interval to current time
 # return True if current time is later than last_update + (2 x report interval)
 def overdue(service):
@@ -123,6 +128,7 @@ def serveHTML():
         f = open(HOMELAB_STATUS_LOGFILE, 'r')
         services = serviceList(json.load(f))
         f.close()
+        print (timestamp())
         print (htmlIpReachable_h2("Home IP is", pingIP(homeIP(services))))
         print (htmlIpReachable_h2("Office IP is", pingIP(officeIP(services))))
         for service in services:
@@ -144,7 +150,6 @@ def updateStatusFile(report):  # report is json message
         status = []    
 
     f_new_entry = True
-    timestamp   = timeNow().strftime("%Y-%m-%d %H:%M")
     if UNIT_TEST: sender_ip = report["ip"]
     else:         sender_ip = os.environ['REMOTE_ADDR']
     for service_d in status:                # each entry as a dict
@@ -155,14 +160,14 @@ def updateStatusFile(report):  # report is json message
         # matched an existing entry, update it
         f_new_entry = False
         service_d["interval"]    = report["interval"]
-        service_d["last_update"] = timestamp
+        service_d["last_update"] = timestamp()
         service_d["ip"]          = sender_ip
     if f_new_entry:
         new = { "site":        report["site"],
                 "host":        report["host"],
                 "process":     report["process"],
                 "interval":    report["interval"],
-                "last_update": timestamp,
+                "last_update": timestamp(),
                 "ip":          sender_ip }
         status.append(new)
 
