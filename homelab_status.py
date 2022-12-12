@@ -48,11 +48,13 @@ HTML_DASHBOARD_FOOTER = '''
 
 from collections import namedtuple
 from operator import itemgetter
-import cgi, os, datetime, sys, json,  random
+import cgi, os, datetime, sys, json,  random, subprocess
 
 
 if UNIT_TEST: HOMELAB_STATUS_LOGFILE = "./homelab_status.json"
 else:         HOMELAB_STATUS_LOGFILE = "/big/dom/xmindmentum/homelab/homelab_status.json"
+
+HOMELAB_STATUS_LOGFILE_ARCHIVE = HOMELAB_STATUS_LOGFILE + ".arc"
 Service_t = namedtuple("Service", "site, host, process, interval, last_update, ip")
 
 
@@ -111,6 +113,11 @@ def overdue(service):
     return (timeNow() > overdue_time)
 
 # return a static html string indicating if service is running or not
+def html_status(service):
+    service_str = service.last_update + ', ' + str(service.interval) + ', ' + service.site + ' ' + service.host + ' ' + service.process
+    color = "green" if not overdue(service) else "red"
+    return ('<span style="color:{}"><code>{}</code></span></br>'.format(color, service_str))
+
 def html_status_h2(service):
     service_str = service.site + ' ' + service.host + ' ' + service.process
     color = "green" if not overdue(service) else "red"
@@ -132,7 +139,7 @@ def serveHTML():
         print (htmlIpReachable_h2("Home IP is", pingIP(homeIP(services))))
         print (htmlIpReachable_h2("Office IP is", pingIP(officeIP(services))))
         for service in services:
-            print (html_status_h2(service))
+            print (html_status(service))
     except:
         print ("Unable to find status file")
     print (HTML_DASHBOARD_FOOTER)
@@ -147,8 +154,8 @@ def updateStatusFile(report):  # report is json message
         f.close()
     except:
         # file doesn't exist, create empty list
-        status = []    
-
+        # status = []   
+        pass 
     f_new_entry = True
     if UNIT_TEST: sender_ip = report["ip"]
     else:         sender_ip = os.environ['REMOTE_ADDR']
@@ -191,6 +198,8 @@ else:
 
 if data:
     updateStatusFile(data)
+    #subprocess.Popen("touch ../homelab/homelab_status.json.arc", shell=True)
+    subprocess.Popen("cat ../homelab/homelab_status.json >> ../homelab/homelab_status.json.arc", shell=True)
 
 serveHTML()
 
